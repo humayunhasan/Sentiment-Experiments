@@ -1,0 +1,10 @@
+openai
+google-generativeai
+motor
+pymongo
+python-dotenv
+transformers
+torch
+nltk
+tenacity
+tqdm
