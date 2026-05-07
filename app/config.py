@@ -120,6 +120,7 @@ class Settings:
     kimi_model: str
     kimi_base_url: str
 
+    enable_kimi: bool
     enable_anthropic: bool
     enable_hf_tabularisai: bool
     hf_tabularisai_model: str
@@ -164,6 +165,7 @@ def get_settings() -> Settings:
         deepseek_base_url=_get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
         kimi_model=_get("KIMI_MODEL", "kimi-k2.6"),
         kimi_base_url=_get("KIMI_BASE_URL", "https://api.moonshot.ai/v1"),
+        enable_kimi=_get_bool("ENABLE_KIMI", False),
         enable_anthropic=_get_bool("ENABLE_ANTHROPIC", False),
         enable_hf_tabularisai=_get_bool("ENABLE_HF_TABULARISAI", True),
         hf_tabularisai_model=_get(

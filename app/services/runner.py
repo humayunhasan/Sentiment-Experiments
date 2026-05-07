@@ -91,7 +91,8 @@ def build_models(settings: Settings | None = None) -> list[SentimentModel]:
             MissingKeySentimentModel("deepseek", "DEEPSEEK_API_KEY not configured")
         )
 
-    models.append(KimiSentimentModel(s))
+    if s.enable_kimi:
+        models.append(KimiSentimentModel(s))
 
     models.append(NLTKVaderModel())
 

@@ -25,10 +25,11 @@ def model_keys_for_report(settings: Settings | None = None) -> list[str]:
     keys.extend(
         [
             "deepseek",
-            "kimi",
             "nltk_vader",
         ]
     )
+    if s.enable_kimi:
+        keys.append("kimi")
     if s.enable_hf_tabularisai:
         keys.append("hf_tabularisai")
     return keys
