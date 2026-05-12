@@ -9,8 +9,19 @@ from motor.motor_asyncio import AsyncIOMotorCollection
 
 from app.config import Settings, get_settings
 from app.db import get_results_collection
+from app.models_providers.base import build_prompt
 
 logger = logging.getLogger(__name__)
+
+PRICING = {
+    "gpt_5_mini": {"input_per_1m": 0.25, "output_per_1m": 2.00},
+    "gemini_flash": {"input_per_1m": 0.125, "output_per_1m": 0.75},
+    "claude_haiku": {"input_per_1m": 1.00, "output_per_1m": 5.00},
+    "deepseek": {"input_per_1m": 0.14, "output_per_1m": 0.28},
+    "hf_tabularisai": {"input_per_1m": 0.0, "output_per_1m": 0.0},
+    "nltk_vader": {"input_per_1m": 0.0, "output_per_1m": 0.0},
+    "kimi": {"input_per_1m": 0.0, "output_per_1m": 0.0},
+}
 
 
 def model_keys_for_report(settings: Settings | None = None) -> list[str]:
@@ -78,11 +89,16 @@ async def evaluate_experiment(
             "errors": 0.0,
             "latency_sum_ms": 0.0,
             "latency_count": 0.0,
+            "input_tokens_sum": 0.0,
+            "output_tokens_sum": 0.0,
+            "tokens_count": 0.0,
         }
         for k in model_keys
     }
 
     for doc in docs:
+        text = doc.get("text", "")
+        prompt = build_prompt(text)
         maj = doc.get("majority_label") or {}
         truth = maj.get("overall_sentiment")
         if not isinstance(truth, str):
@@ -108,6 +124,24 @@ async def evaluate_experiment(
             except (TypeError, ValueError):
                 pass
 
+            # Token estimation
+            usage = payload.get("usage") or {}
+            input_tokens = usage.get("prompt_tokens")
+            if input_tokens is None:
+                input_tokens = len(prompt) / 4
+            
+            output_tokens = usage.get("completion_tokens")
+            if output_tokens is None:
+                if mk in ("nltk_vader", "hf_tabularisai"):
+                    output_tokens = 0.0
+                else:
+                    raw_resp = payload.get("raw_response", "")
+                    output_tokens = len(str(raw_resp)) / 4
+            
+            st["input_tokens_sum"] += input_tokens
+            st["output_tokens_sum"] += output_tokens
+            st["tokens_count"] += 1.0
+
     out_models: dict[str, Any] = {}
     for mk, st in stats.items():
         err_count = int(st["errors"])
@@ -127,6 +161,29 @@ async def evaluate_experiment(
             "error_rate": err_rate,
             "avg_latency_ms": avg_lat,
         }
+
+        # Cost calculations
+        pricing = PRICING.get(mk, {"input_per_1m": 0.0, "output_per_1m": 0.0})
+        avg_in = st["input_tokens_sum"] / st["tokens_count"] if st["tokens_count"] > 0 else 0.0
+        avg_out = st["output_tokens_sum"] / st["tokens_count"] if st["tokens_count"] > 0 else 0.0
+        
+        total_cost = (
+            st["input_tokens_sum"] * pricing["input_per_1m"] + 
+            st["output_tokens_sum"] * pricing["output_per_1m"]
+        ) / 1_000_000
+
+        # cost per 1m comments = avg cost per valid request * 1,000,000
+        avg_cost = total_cost / st["tokens_count"] if st["tokens_count"] > 0 else 0.0
+        cost_per_1m = avg_cost * 1_000_000
+
+        out_models[mk].update({
+            "avg_input_tokens_per_request": avg_in,
+            "avg_output_tokens_per_request": avg_out,
+            "input_cost_per_1m_tokens": pricing["input_per_1m"],
+            "output_cost_per_1m_tokens": pricing["output_per_1m"],
+            "estimated_cost_for_experiment": total_cost,
+            "estimated_cost_per_1m_comments": cost_per_1m
+        })
 
     leaderboard = sorted(
         out_models.items(),

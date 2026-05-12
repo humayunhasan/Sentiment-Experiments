@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import csv
 import json
 import logging
+from pathlib import Path
 
 from app.config import get_settings
 from app.services.evaluator import evaluate_experiment
@@ -51,7 +53,29 @@ async def _run() -> None:
             f"{name:18}  total={total}  maj_match={mm}  maj_rate={mmr:.4f}  "
             f"err={ec}  err_rate={er:.4f}  avg_ms={lat_s}"
         )
+        # New cost/token info
+        avg_in = row.get("avg_input_tokens_per_request", 0.0)
+        avg_out = row.get("avg_output_tokens_per_request", 0.0)
+        total_cost = row.get("estimated_cost_for_experiment", 0.0)
+        cost_1m = row.get("estimated_cost_per_1m_comments", 0.0)
+        print(
+            f"  tokens: in={avg_in:.0f} out={avg_out:.0f} | "
+            f"cost: total=${total_cost:.4f} per_1m=${cost_1m:.2f}"
+        )
     print()
+
+    # Export CSV
+    output_dir = Path("exports") / args.experiment_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    csv_file = output_dir / "model_cost_accuracy_summary.csv"
+    
+    rows = report.get("leaderboard", [])
+    if rows:
+        with open(csv_file, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+            writer.writeheader()
+            writer.writerows(rows)
+        log.info("Exported summary to %s", csv_file)
 
 
 def main() -> None:
